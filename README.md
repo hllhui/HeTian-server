@@ -1,6 +1,5 @@
-# Egg Example for Ant Design Pro
+# HeTian-server
 
-A full example with frontend([Ant Design Pro]) and backend([Egg.js]).
 
 ## Development
 
