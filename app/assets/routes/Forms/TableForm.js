@@ -1,0 +1,266 @@
+import React, {PureComponent, Fragment} from 'react';
+import {Table, Button, Input, message, Popconfirm, Divider} from 'antd';
+import styles from './style.less';
+
+export default class TableForm extends PureComponent {
+  index = 0;
+
+  cacheOriginData = {};
+
+  constructor(props) {
+    super(props);
+    this.state = {
+      data: props.value,
+      loading: false,
+      dispatch: props.dispatch
+    };
+  }
+
+  componentWillReceiveProps(nextProps) {
+    if ('value' in nextProps) {
+      this.setState({
+        data: nextProps.value,
+      });
+    }
+  }
+
+  getRowByKey(key, newData) {
+    const {data} = this.state;
+    return (newData || data).filter(item => item.key === key)[0];
+  }
+
+  toggleEditable = (e, key, id) => {
+    e.preventDefault();
+    const {data} = this.state;
+    const newData = data.map(item => ({...item}));
+    const target = this.getRowByKey(key, newData);
+    if (target) {
+      // 进入编辑状态时保存原始数据
+      if (!target.editable) {
+        this.cacheOriginData[key] = {...target};
+      }
+      target.editable = !target.editable;
+      target.key = id;
+      target.id = id;
+      this.setState({data: newData});
+    }
+  };
+
+  newMember = () => {
+    const {data} = this.state;
+    const newData = data.map(item => ({...item}));
+    newData.push({
+      key: `SHOP_ID_${this.index}`,
+      name: '',
+      address: '',
+      seller: '',
+      editable: true,
+      isNew: true,
+    });
+    this.index += 1;
+    this.setState({data: newData});
+  };
+
+  remove(key) {
+    const {data} = this.state;
+    const newData = data.filter(item => item.key !== key);
+    this.state.dispatch({
+      type: 'rule/remove',
+      payload: key,
+    });
+    this.setState({data: newData})
+  }
+
+  handleKeyPress(e, key) {
+    if (e.key === 'Enter') {
+      this.saveRow(e, key);
+    }
+  }
+
+  handleFieldChange(e, fieldName, key) {
+    const {data} = this.state;
+    const newData = data.map(item => ({...item}));
+    const target = this.getRowByKey(key, newData);
+    if (target) {
+      target[fieldName] = e.target.value;
+      this.setState({data: newData});
+    }
+  }
+
+  saveRow(e, key, type) {
+    e.persist();
+    const that = this;
+    this.setState({
+      loading: true,
+    });
+    setTimeout(() => {
+      if (this.clickedCancel) {
+        this.clickedCancel = false;
+        return;
+      }
+      const target = this.getRowByKey(key) || {};
+      if (!target.address || !target.name || !target.seller) {
+        message.error('请填写完整店铺信息。');
+        e.target.focus();
+        this.setState({
+          loading: false,
+        });
+        return;
+      }
+      this.state.dispatch({
+        type: `rule/${type}`,
+        payload: target,
+        callback: (val) => {
+          that.toggleEditable(e, key, val);
+          that.setState({
+            loading: false,
+          });
+        }
+      });
+      delete target.isNew;
+
+    }, 500);
+  }
+
+
+  cancel(e, key) {
+    this.clickedCancel = true;
+    e.preventDefault();
+    const {data} = this.state;
+    const newData = data.map(item => ({...item}));
+    const target = this.getRowByKey(key, newData);
+    if (this.cacheOriginData[key]) {
+      Object.assign(target, this.cacheOriginData[key]);
+      target.editable = false;
+      delete this.cacheOriginData[key];
+    }
+    this.setState({data: newData});
+    this.clickedCancel = false;
+  }
+
+  render() {
+    const columns = [
+      {
+        title: '店铺名称',
+        dataIndex: 'name',
+        key: 'name',
+        width: '25%',
+        render: (text, record) => {
+          if (record.editable) {
+            return (
+              <Input
+                value={text}
+                autoFocus
+                onChange={e => this.handleFieldChange(e, 'name', record.key)}
+                onKeyPress={e => this.handleKeyPress(e, record.key)}
+                placeholder="店铺名称"
+              />
+            );
+          }
+          return text;
+        },
+      },
+      {
+        title: '地址',
+        dataIndex: 'address',
+        key: 'address',
+        width: '40%',
+        render: (text, record) => {
+          if (record.editable) {
+            return (
+              <Input
+                value={text}
+                onChange={e => this.handleFieldChange(e, 'address', record.key)}
+                onKeyPress={e => this.handleKeyPress(e, record.key)}
+                placeholder="地址"
+              />
+            );
+          }
+          return text;
+        },
+      },
+      {
+        title: '店员',
+        dataIndex: 'seller',
+        key: 'seller',
+        width: '15%',
+        render: (text, record) => {
+          if (record.editable) {
+            return (
+              <Input
+                value={text}
+                onChange={e => this.handleFieldChange(e, 'seller', record.key)}
+                onKeyPress={e => this.handleKeyPress(e, record.key)}
+                placeholder="店员"
+              />
+            );
+          }
+          return text;
+        },
+      },
+      {
+        title: '操作',
+        key: 'action',
+        render: (text, record) => {
+          const {loading} = this.state;
+          if (!!record.editable && loading) {
+            return null;
+          }
+          if (record.editable) {
+            if (record.isNew) {
+              return (
+                <span>
+                  <a onClick={e => this.saveRow(e, record.key, 'create')}>添加</a>
+                  <Divider type="vertical"/>
+                  <Popconfirm title="是否要删除此行？" onConfirm={() => this.remove(record.key)}>
+                    <a>删除</a>
+                  </Popconfirm>
+                </span>
+              );
+            }
+            return (
+              <span>
+                <a onClick={e => this.saveRow(e, record.key, 'update')}>保存</a>
+                <Divider type="vertical"/>
+                <a onClick={e => this.cancel(e, record.key)}>取消</a>
+              </span>
+            );
+          }
+          return (
+            <span>
+              <a onClick={e => this.toggleEditable(e, record.key, record.id)}>编辑</a>
+              <Divider type="vertical"/>
+              <Popconfirm title="是否要删除此行？" onConfirm={() => this.remove(record.key)}>
+                <a>删除</a>
+              </Popconfirm>
+            </span>
+          );
+        },
+      },
+    ];
+
+    const {loading, data} = this.state;
+
+    return (
+      <Fragment>
+        <Table
+          loading={loading}
+          columns={columns}
+          dataSource={data}
+          pagination={false}
+          rowClassName={record => {
+            return record.editable ? styles.editable : '';
+          }}
+        />
+        <Button
+          style={{width: '100%', marginTop: 16, marginBottom: 8}}
+          type="dashed"
+          onClick={this.newMember}
+          icon="plus"
+        >
+          新增店铺
+        </Button>
+      </Fragment>
+    );
+  }
+}
